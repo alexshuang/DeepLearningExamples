@@ -11,7 +11,7 @@ WARMUP_STEPS=${2:-20}
 TRAIN_STEPS=${1:-100}
 MAX_STEPS=$(expr $WARMUP_STEPS + $TRAIN_STEPS)
 
-CMD="python3.6 -m dlrm.scripts.main --mode train --synthetic_dataset true --print_freq 1"
+CMD="python3.6 -m dlrm.scripts.main --mode train --synthetic_dataset true --fp16 true --print_freq 1"
 
 # end2end perf
 $CMD --benchmark_warmup_steps ${WARMUP_STEPS} --max_steps ${MAX_STEPS} | tee /tmp/run.log

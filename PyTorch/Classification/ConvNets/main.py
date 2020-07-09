@@ -71,7 +71,8 @@ def add_parser_arguments(parser):
     model_names = models.resnet_versions.keys()
     model_configs = models.resnet_configs.keys()
 
-    parser.add_argument("data", metavar="DIR", help="path to dataset")
+    #parser.add_argument("data", metavar="DIR", help="path to dataset")
+    parser.add_argument("data", help="path to dataset")
     parser.add_argument(
         "--data-backend",
         metavar="BACKEND",
@@ -281,9 +282,15 @@ def add_parser_arguments(parser):
         "--workspace",
         type=str,
         default="./",
-        metavar="DIR",
         help="path to directory where checkpoints will be stored",
     )
+#    parser.add_argument(
+#        "--workspace",
+#        type=str,
+#        default="./",
+#        metavar="DIR",
+#        help="path to directory where checkpoints will be stored",
+#    )
     parser.add_argument(
         "--memory-format",
         type=str,
@@ -291,6 +298,9 @@ def add_parser_arguments(parser):
         choices=["nchw", "nhwc"],
         help="memory layout, nchw or nhwc",
     )
+    parser.add_argument("--warmup-steps", type=int, help="skip the first steps")
+    parser.add_argument("--max-steps", type=int, help="max training steps")
+    parser.add_argument("--result-dir", type=str, help="output of model")
 
 
 def main(args):
@@ -414,15 +424,15 @@ def main(args):
     if args.data_backend == "pytorch":
         get_train_loader = get_pytorch_train_loader
         get_val_loader = get_pytorch_val_loader
-    elif args.data_backend == "dali-gpu":
-        get_train_loader = get_dali_train_loader(dali_cpu=False)
-        get_val_loader = get_dali_val_loader()
-    elif args.data_backend == "dali-cpu":
-        get_train_loader = get_dali_train_loader(dali_cpu=True)
-        get_val_loader = get_dali_val_loader()
     elif args.data_backend == "syntetic":
         get_val_loader = get_syntetic_loader
         get_train_loader = get_syntetic_loader
+#    elif args.data_backend == "dali-gpu":
+#        get_train_loader = get_dali_train_loader(dali_cpu=False)
+#        get_val_loader = get_dali_val_loader()
+#    elif args.data_backend == "dali-cpu":
+#        get_train_loader = get_dali_train_loader(dali_cpu=True)
+#        get_val_loader = get_dali_val_loader()
 
     train_loader, train_loader_len = get_train_loader(
         args.data,
@@ -502,29 +512,35 @@ def main(args):
 
     model_and_loss.load_model_state(model_state)
 
-    train_loop(
-        model_and_loss,
-        optimizer,
-        lr_policy,
-        train_loader,
-        val_loader,
-        args.fp16,
-        logger,
-        should_backup_checkpoint(args),
-        use_amp=args.amp,
-        batch_size_multiplier=batch_size_multiplier,
-        start_epoch=start_epoch,
-        end_epoch=(start_epoch + args.run_epochs)
-        if args.run_epochs != -1
-        else args.epochs,
-        best_prec1=best_prec1,
-        prof=args.prof,
-        skip_training=args.evaluate,
-        skip_validation=args.training_only,
-        save_checkpoints=args.save_checkpoints and not args.evaluate,
-        checkpoint_dir=args.workspace,
-        checkpoint_filename=args.checkpoint_filename,
-    )
+    try:
+        train_loop(
+            model_and_loss,
+            optimizer,
+            lr_policy,
+            train_loader,
+            val_loader,
+            args.fp16,
+            logger,
+            should_backup_checkpoint(args),
+            use_amp=args.amp,
+            batch_size_multiplier=batch_size_multiplier,
+            start_epoch=start_epoch,
+            end_epoch=(start_epoch + args.run_epochs)
+            if args.run_epochs != -1
+            else args.epochs,
+            best_prec1=best_prec1,
+            prof=args.prof,
+            skip_training=args.evaluate,
+            skip_validation=args.training_only,
+            save_checkpoints=args.save_checkpoints and not args.evaluate,
+            checkpoint_dir=args.workspace,
+            checkpoint_filename=args.checkpoint_filename,
+            max_steps=args.max_steps,
+            warmup_steps=args.warmup_steps,
+            result_dir=args.result_dir,
+        )
+    except CancelTrainException:
+        pass
     exp_duration = time.time() - exp_start_time
     if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
         logger.end()

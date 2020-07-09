@@ -37,6 +37,10 @@ from . import logger as log
 from . import resnet as models
 from . import utils
 import dllogger
+from tqdm import tqdm
+import pandas as pd
+
+class CancelTrainException(Exception): pass
 
 try:
     from apex.parallel import DistributedDataParallel as DDP
@@ -51,6 +55,72 @@ ACC_METADATA = {"unit": "%", "format": ":.2f"}
 IPS_METADATA = {"unit": "img/s", "format": ":.2f"}
 TIME_METADATA = {"unit": "s", "format": ":.5f"}
 LOSS_METADATA = {"format": ":.5f"}
+
+
+class StopwatchMeter():
+    """ Computes the sum/avg duration of some event in seconds """
+    def __init__(self):
+        self.reset()
+
+    def iter_start(self):
+        self._iter_start = time.perf_counter()
+
+    def iter_stop(self):
+        if self._iter_start is not None:
+            self.iter_elapsed.append(time.perf_counter() - self._iter_start)
+    
+    def forward_start(self):
+        self.fwd_start = time.perf_counter()
+
+    def forward_stop(self):
+        if self.fwd_start is not None:
+            self.fwd_elapsed.append(time.perf_counter() - self.fwd_start)
+    
+    def backward_start(self):
+        self.bwd_start = time.perf_counter()
+
+    def backward_stop(self):
+        if self.bwd_start is not None:
+            self.bwd_elapsed.append(time.perf_counter() - self.bwd_start)
+
+    def optim_start(self):
+        self.opt_start = time.perf_counter()
+
+    def optim_stop(self):
+        if self.opt_start is not None:
+            self.optim_elapsed.append(time.perf_counter() - self.opt_start)
+
+    def dl_start(self):
+        self._dl_start = time.perf_counter()
+
+    def dl_stop(self):
+        if self._dl_start is not None:
+            self.dl_elapsed.append(time.perf_counter() - self._dl_start)
+    
+    @property
+    def iter_elapsed_total(self): return np.sum(self.iter_elapsed)
+    @property
+    def iter_elapsed_avg(self): return np.mean(self.iter_elapsed)
+    @property
+    def fwd_elapsed_total(self): return np.sum(self.fwd_elapsed)
+    @property
+    def fwd_elapsed_avg(self): return np.mean(self.fwd_elapsed)
+    @property
+    def bwd_elapsed_total(self): return np.sum(self.bwd_elapsed)
+    @property
+    def bwd_elapsed_avg(self): return np.mean(self.bwd_elapsed)
+    @property
+    def optim_elapsed_total(self): return np.sum(self.optim_elapsed)
+    @property
+    def optim_elapsed_avg(self): return np.mean(self.optim_elapsed)
+    @property
+    def dl_elapsed_total(self): return np.sum(self.dl_elapsed)
+    @property
+    def dl_elapsed_avg(self): return np.mean(self.dl_elapsed)
+
+    def reset(self):
+        self.iter_elapsed, self.fwd_elapsed, self.bwd_elapsed, self.optim_elapsed, self.dl_elapsed = [], [], [], [], [] # cumulative time during which stopwatch was active
+        self._iter_start, self.fwd_start, self.bwd_start, self.opt_start, self._dl_start = None, None, None, None, None
 
 
 class ModelAndLoss(nn.Module):
@@ -230,6 +300,7 @@ def get_train_step(
     model_and_loss, optimizer, fp16, use_amp=False, batch_size_multiplier=1
 ):
     def _step(input, target, optimizer_step=True):
+        #import pdb; pdb.set_trace()
         input_var = Variable(input)
         target_var = Variable(target)
         loss, output = model_and_loss(input_var, target_var)
@@ -238,6 +309,7 @@ def get_train_step(
         else:
             reduced_loss = loss.data
 
+        
         if fp16:
             optimizer.backward(loss)
         elif use_amp:
@@ -278,6 +350,9 @@ def train(
     prof=-1,
     batch_size_multiplier=1,
     register_metrics=True,
+    max_steps=1,
+    warmup_steps=0,
+    result_dir=None,
 ):
 
     if register_metrics and logger is not None:
@@ -331,24 +406,44 @@ def train(
     if prof > 0:
         data_iter = utils.first_n(prof, data_iter)
 
+    meter = StopwatchMeter()
+
     for i, (input, target) in data_iter:
+        if max_steps > 0 and i >= max_steps: break
+
         bs = input.size(0)
         lr_scheduler(optimizer, i, epoch)
-        data_time = time.time() - end
+        #data_time = time.time() - end
+        meter.dl_stop()
 
+        print("# %d step..." % i)
         optimizer_step = ((i + 1) % batch_size_multiplier) == 0
+        meter.iter_start()
         loss = step(input, target, optimizer_step=optimizer_step)
+        meter.iter_stop()
 
-        it_time = time.time() - end
+        #it_time = time.time() - end
 
-        if logger is not None:
-            logger.log_metric("train.loss", to_python_float(loss), bs)
-            logger.log_metric("train.compute_ips", calc_ips(bs, it_time - data_time))
-            logger.log_metric("train.total_ips", calc_ips(bs, it_time))
-            logger.log_metric("train.data_time", data_time)
-            logger.log_metric("train.compute_time", it_time - data_time)
+        if warmup_steps > 0 and i < warmup_steps: meter.reset()
 
-        end = time.time()
+#        if logger is not None:
+#            logger.log_metric("train.loss", to_python_float(loss), bs)
+#            logger.log_metric("train.compute_ips", calc_ips(bs, it_time - data_time))
+#            logger.log_metric("train.total_ips", calc_ips(bs, it_time))
+#            logger.log_metric("train.data_time", data_time)
+#            logger.log_metric("train.compute_time", it_time - data_time)
+
+        #end = time.time()
+        meter.dl_start()
+
+    if result_dir:
+        res = {'Model': [model_and_loss.arch[0]], 'Dtype': ['FP16'] if fp16 or use_amp else ['FP32'],
+                'Iteration': [len(meter.iter_elapsed)], 'TotalDurationNs': [(meter.iter_elapsed_total + meter.dl_elapsed_total) * 1e9],
+                'AvgIterDurationNs': [meter.iter_elapsed_avg * 1e9], 'AvgDataLoadDurationNs': [meter.dl_elapsed_avg * 1e9]}
+        df = pd.DataFrame(res)
+        df.to_csv(f'{result_dir}/model.csv', index=False)
+
+    raise CancelTrainException
 
 
 def get_val_step(model_and_loss):
@@ -509,6 +604,9 @@ def train_loop(
     save_checkpoints=True,
     checkpoint_dir="./",
     checkpoint_filename="checkpoint.pth.tar",
+    max_steps=1,
+    warmup_steps=0,
+    result_dir=None,
 ):
 
     prec1 = -1
@@ -530,6 +628,9 @@ def train_loop(
                 prof=prof,
                 register_metrics=epoch == start_epoch,
                 batch_size_multiplier=batch_size_multiplier,
+                max_steps=max_steps,
+                warmup_steps=warmup_steps,
+                result_dir=result_dir,
             )
 
         if not skip_validation:

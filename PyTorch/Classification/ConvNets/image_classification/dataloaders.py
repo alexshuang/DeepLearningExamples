@@ -36,6 +36,7 @@ from PIL import Image
 from functools import partial
 
 DATA_BACKEND_CHOICES = ["pytorch", "syntetic"]
+
 try:
     from nvidia.dali.plugin.pytorch import DALIClassificationIterator
     from nvidia.dali.pipeline import Pipeline
@@ -48,7 +49,6 @@ except ImportError:
     print(
         "Please install DALI from https://www.github.com/NVIDIA/DALI to run this example."
     )
-
 
 def load_jpeg_from_file(path, cuda=True, fp16=False):
     img_transforms = transforms.Compose(
