@@ -12,7 +12,8 @@ rm -rf $OUT_DIR
 mkdir -p $OUT_DIR
 
 #CMD="python3.6 ./main.py $OUT_DIR --arch resnet50 -c fanin --label-smoothing 0.1 --amp --static-loss-scale 128 --data-backend syntetic"
-CMD="python3.6 ./main.py $OUT_DIR --data-backend syntetic --raport-file raport.json -j8 -p 100 --lr 2.048 --warmup 8 --arch resnet50 -c fanin --label-smoothing 0.1 --lr-schedule cosine --mom 0.875 --wd 3.0517578125e-05 --workspace $OUT_DIR --amp --static-loss-scale 128 --epochs 50"
+#CMD="python3.6 ./main.py $OUT_DIR --data-backend syntetic --raport-file raport.json -j8 -p 100 --lr 2.048 --warmup 8 --arch resnet50 -c fanin --label-smoothing 0.1 --lr-schedule cosine --mom 0.875 --wd 3.0517578125e-05 --workspace $OUT_DIR --amp --static-loss-scale 128 --epochs 50"
+CMD="python3.6 ./multiproc.py --nproc_per_node 1 ./main.py $OUT_DIR --data-backend syntetic --raport-file raport.json -j16 -p 100 --lr 2.048 --optimizer-batch-size 2048 --warmup 8 --arch resnet50 -c fanin --label-smoothing 0.1 --lr-schedule cosine --mom 0.875 --wd 3.0517578125e-05 --workspace $OUT_DIR -b 256 --amp --static-loss-scale 128 --epochs 90"
 
 # training
 $CMD --warmup-steps $WARMUP_STEPS --max-steps $STEPS --result-dir $OUT_DIR
