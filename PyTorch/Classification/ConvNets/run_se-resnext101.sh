@@ -1,13 +1,12 @@
 #!/bin/sh
 
 TOP_DIR=../
-STEPS=${1:-120}
-WARMUP_STEPS=${2:-20}
+OUT_DIR=$1
+STEPS=${2:-120}
+WARMUP_STEPS=${3:-20}
 if [ $STEPS -le $WARMUP_STEPS ]; then
     WARMUP_STEPS=$(expr $STEPS / 5)
 fi
-
-OUT_DIR=/data/rocm${ROCM_VERSION}_rocblas${ROCBLAS_VERSION}/se-resnext101-32x4d
 rm -rf $OUT_DIR
 mkdir -p $OUT_DIR
 

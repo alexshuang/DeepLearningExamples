@@ -1,14 +1,14 @@
 #!/bin/sh
 
-OUT_DIR=/data/rocm${ROCM_VERSION}_rocblas${ROCBLAS_VERSION}/dlrm
+OUT_DIR=$1
 
 mkdir -p $OUT_DIR
 rm -rf $OUT_DIR/*
 
 set -e
 
-WARMUP_STEPS=${2:-20}
-TRAIN_STEPS=${1:-100}
+WARMUP_STEPS=${3:-20}
+TRAIN_STEPS=${2:-100}
 MAX_STEPS=$(expr $WARMUP_STEPS + $TRAIN_STEPS)
 
 CMD="python3.6 -m dlrm.scripts.main --mode train --synthetic_dataset true --fp16 true --print_freq 1"
