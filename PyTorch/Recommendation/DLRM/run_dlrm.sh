@@ -1,6 +1,6 @@
 #!/bin/sh
 
-OUT_DIR=$1
+OUT_DIR=${1:-out}
 
 mkdir -p $OUT_DIR
 rm -rf $OUT_DIR/*
@@ -11,11 +11,31 @@ WARMUP_STEPS=${3:-20}
 TRAIN_STEPS=${2:-100}
 MAX_STEPS=$(expr $WARMUP_STEPS + $TRAIN_STEPS)
 
-CMD="python3.6 -m dlrm.scripts.main --mode train --synthetic_dataset true --fp16 true --print_freq 1"
+#CMD="python3.6 -m dlrm.scripts.main --mode train --synthetic_dataset true --fp16 true --print_freq 1"
+CMD="python3.6 -m dlrm.scripts.main \
+  --mode train \
+  --seed 8 \
+  --epochs 1 \
+  --print_freq 1 \
+  --batch_size 32768 \
+  --bottom_mlp_sizes 512,256,128 \
+  --top_mlp_sizes 1024,1024,512,256,1 \
+  --embedding_dim 128 \
+  --num_numerical_features 13 \
+  --amp \
+  --optimized_mlp"
+
+#  --benchmark_warmup_steps 250 \
+#  --dataset $dataset_dir \
+#  --dataset_type binary \
+#  --max_steps 500 \
+
 
 # end2end perf
 $CMD --benchmark_warmup_steps ${WARMUP_STEPS} --max_steps ${MAX_STEPS} | tee /tmp/run.log
 sed -n '/^Epoch:\[0/p' /tmp/run.log > ${OUT_DIR}/run_res.csv
+
+exit 0
 
 # record kernels
 export ROCBLAS_LAYER=2
