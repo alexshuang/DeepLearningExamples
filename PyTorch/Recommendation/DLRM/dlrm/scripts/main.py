@@ -139,6 +139,9 @@ def is_data_prefetching_enabled() -> bool:
 def create_model():
     print("Creating model")
 
+    FLAGS.top_mlp_sizes = [int(s) for s in FLAGS.top_mlp_sizes]
+    FLAGS.bottom_mlp_sizes = [int(s) for s in FLAGS.bottom_mlp_sizes]
+
     model_config = {
         'top_mlp_sizes': FLAGS.top_mlp_sizes,
         'bottom_mlp_sizes': FLAGS.bottom_mlp_sizes,
@@ -374,11 +377,13 @@ def train(model, loss_fn, optimizer, data_loader_train, data_loader_test, scaled
     print(F"Finished training in {run_time_s}s. "
           F"Average speed {global_step * FLAGS.batch_size / run_time_s:.1f} records/s.")
 
-    avg_throughput = FLAGS.batch_size / metric_logger.step_time.avg
+    avg_step_time = metric_logger.step_time.avg
+    avg_throughput = FLAGS.batch_size / avg_step_time
 
     results = {'best_auc' : best_auc,
                'best_epoch' : best_epoch,
-               'average_train_throughput' : avg_throughput}
+               'average_train_throughput' : avg_throughput,
+               'average_step_time': avg_step_time}
 
     if 'test_step_time' in locals():
         avg_test_throughput = FLAGS.test_batch_size / test_step_time

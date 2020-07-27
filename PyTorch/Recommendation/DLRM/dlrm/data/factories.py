@@ -42,7 +42,7 @@ def create_synthetic_datasets(flags, device_mapping: Optional[Dict] = None):
 
 def create_real_datasets(flags, path, dataset_class: type = CriteoBinDataset):
     train_dataset = os.path.join(path, "train_data.bin")
-    test_dataset = os.path.join(path, "test_data.bin")
+#    test_dataset = os.path.join(path, "test_data.bin")
     categorical_sizes = get_categorical_feature_sizes(flags)
 
     dataset_train = dataset_class(
@@ -53,14 +53,15 @@ def create_real_datasets(flags, path, dataset_class: type = CriteoBinDataset):
         categorical_features=len(categorical_sizes),
     )
 
-    dataset_test = dataset_class(
-        data_file=test_dataset,
-        batch_size=flags.test_batch_size,
-        numerical_features=flags.num_numerical_features,
-        categorical_features=len(categorical_sizes),
-    )
+#    dataset_test = dataset_class(
+#        data_file=test_dataset,
+#        batch_size=flags.test_batch_size,
+#        numerical_features=flags.num_numerical_features,
+#        categorical_features=len(categorical_sizes),
+#    )
 
-    return dataset_train, dataset_test
+#    return dataset_train, dataset_test
+    return dataset_train, None
 
 
 class DatasetFactory:

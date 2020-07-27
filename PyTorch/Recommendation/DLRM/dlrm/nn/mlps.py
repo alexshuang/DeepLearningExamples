@@ -15,7 +15,11 @@
 import math
 from typing import Sequence, List, Iterable
 
-import apex.mlp
+try:
+    import apex.mlp
+except:
+    print("apex.mlp not found")
+
 import torch
 from torch import nn
 
