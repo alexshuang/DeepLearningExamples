@@ -1,13 +1,13 @@
 #!/bin/sh
 
 OUT_DIR=${1:-out}
+TMP_DIR=$OUT_DIR/tmp
 
-mkdir -p $OUT_DIR
-rm -rf $OUT_DIR/*
+mkdir -p $OUT_DIR $TMP_DIR
+#rm -rf $OUT_DIR/*
 
+MAX_STEPS=${2:-120}
 WARMUP_STEPS=${3:-20}
-TRAIN_STEPS=${2:-100}
-MAX_STEPS=$(expr $WARMUP_STEPS + $TRAIN_STEPS)
 
 dataset_dir=/data/small_terabyte_dataset
 
@@ -35,33 +35,34 @@ CMD="python3.6 -m dlrm.scripts.main \
 set -e
 
 # end2end perf
-$CMD --benchmark_warmup_steps ${WARMUP_STEPS} --max_steps ${MAX_STEPS} | tee /tmp/run.log
-sed -n '/^Epoch:\[0/p' /tmp/run.log > ${OUT_DIR}/run_res.csv
+$CMD --benchmark_warmup_steps ${WARMUP_STEPS} --max_steps ${MAX_STEPS} | tee $TMP_DIR/run.log
+sed -n '/^Epoch:\[0/p' $TMP_DIR/run.log > ${OUT_DIR}/run_res.csv
 
 # record kernels
-export ROCBLAS_LAYER=2
+export ROCBLAS_LAYER=6
 export ROCBLAS_LOG_BENCH_PATH=${OUT_DIR}/rocblas_bench.csv
+export ROCBLAS_LOG_PROFILE_PATH=${OUT_DIR}/rocblas_config.json
 rm -f ${ROCBLAS_LOG_BENCH_PATH}
+rm -f ${ROCBLAS_LOG_PROFILE_PATH}
 
 echo "pmc: FetchSize L2CacheHit" > input.txt
-/opt/rocm/bin/rocprof -i input.txt --obj-tracking on --timestamp on --stats -o ${OUT_DIR}/kernel_prof.csv \
+/opt/rocm/bin/rocprof -i input.txt --obj-tracking on --timestamp on --stats -o ${TMP_DIR}/kernel_prof.csv \
 $CMD --benchmark_warmup_steps 0 --max_steps 1
 rm -f ${OUT_DIR}/*.db ${OUT_DIR}/*.json ${OUT_DIR}/*.txt
 
 # split one iteration
-NUM_GEMM=26
-tail -$NUM_GEMM $ROCBLAS_LOG_BENCH_PATH > /tmp/rb_tail.csv
-cp /tmp/rb_tail.csv $ROCBLAS_LOG_BENCH_PATH
-sed -n '/Cijk_A/p' ${OUT_DIR}/kernel_prof.csv > /tmp/kname.csv
-tail -$NUM_GEMM /tmp/kname.csv > ${OUT_DIR}/kernel_name.csv
+NUM_GEMM=23
+tail -$NUM_GEMM $ROCBLAS_LOG_BENCH_PATH > $TMP_DIR/rb_tail.csv
+cp $TMP_DIR/rb_tail.csv $ROCBLAS_LOG_BENCH_PATH
+sed -n '/Cijk_A/p' ${TMP_DIR}/kernel_prof.csv > $TMP_DIR/gemm_kernel_prof.csv
+tail -$NUM_GEMM $TMP_DIR/gemm_kernel_prof.csv > ${OUT_DIR}/kernel_prof.csv
 
 # rocblas-bench
 TOOL=/root/rocblas/build/release/clients/staging/rocblas-bench
 if [ ! -e rocblas-bench ]; then
 	ln -s ${TOOL} .
 fi
-
 unset ROCBLAS_LAYER
-sh /tmp/rb_tail.csv 2>&1 > /tmp/rb_res.txt
-sed -E -n '/(^N,|^T,)/p' /tmp/rb_res.txt > $OUT_DIR/rocblas_bench_res.csv
+sh $ROCBLAS_LOG_BENCH_PATH 2>&1 > $TMP_DIR/rb_res.txt
+sed -E -n '/(^N,|^T,)/p' $TMP_DIR/rb_res.txt > $OUT_DIR/rocblas_bench_res.csv
 echo "File $OUT_DIR/rocblas_bench_res.csv is generated."
