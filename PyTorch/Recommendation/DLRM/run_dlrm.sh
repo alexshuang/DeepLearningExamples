@@ -39,11 +39,9 @@ export ROCBLAS_LOG_BENCH_PATH=${OUT_DIR}/rocblas_bench.csv
 export ROCBLAS_LOG_PROFILE_PATH=${OUT_DIR}/rocblas_config.json
 rm -f ${ROCBLAS_LOG_BENCH_PATH}
 rm -f ${ROCBLAS_LOG_PROFILE_PATH}
-
 echo "pmc: FetchSize L2CacheHit" > input.txt
 /opt/rocm/bin/rocprof -i input.txt --obj-tracking on --timestamp on --stats -o ${TMP_DIR}/kernel_prof.csv \
 $CMD --benchmark_warmup_steps 0 --max_steps 1
-rm -f ${OUT_DIR}/*.db ${OUT_DIR}/*.json ${OUT_DIR}/*.txt
 
 # split one iteration
 NUM_GEMM=23
