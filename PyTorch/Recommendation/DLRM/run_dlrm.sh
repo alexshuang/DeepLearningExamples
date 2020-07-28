@@ -27,11 +27,6 @@ CMD="python3.6 -m dlrm.scripts.main \
   --amp \
   --optimized_mlp"
 
-#  --benchmark_warmup_steps 250 \
-#  --dataset $dataset_dir \
-#  --dataset_type binary \
-#  --max_steps 500 \
-
 set -e
 
 # end2end perf
