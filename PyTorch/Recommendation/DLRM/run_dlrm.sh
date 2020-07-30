@@ -6,8 +6,8 @@ TMP_DIR=$OUT_DIR/tmp
 mkdir -p $OUT_DIR $TMP_DIR
 #rm -rf $OUT_DIR/*
 
-MAX_STEPS=${2:-120}
-WARMUP_STEPS=${3:-20}
+MAX_STEPS=${2:-1000}
+WARMUP_STEPS=${3:-30}
 
 dataset_dir=/data/small_terabyte_dataset
 
@@ -56,6 +56,7 @@ if [ ! -e rocblas-bench ]; then
 	ln -s ${TOOL} .
 fi
 unset ROCBLAS_LAYER
-sh $ROCBLAS_LOG_BENCH_PATH 2>&1 > $TMP_DIR/rb_res.txt | tee $TMP_DIR/rocblas_bench.log
+sed "s/$/ -i ${STEPS} -j ${WARMUP_STEPS}/g" $ROCBLAS_LOG_BENCH_PATH > ${TMP_DIR}/rb.csv
+sh ${TMP_DIR}/rb.csv 2>&1 > $TMP_DIR/rb_res.txt | tee $TMP_DIR/rocblas_bench.log
 sed -E -n '/(^N,|^T,)/p' $TMP_DIR/rb_res.txt > $OUT_DIR/rocblas_bench_res.csv
 echo "File $OUT_DIR/rocblas_bench_res.csv is generated."
