@@ -30,8 +30,8 @@ CMD="python3.6 -m dlrm.scripts.main \
 set -e
 
 # end2end perf
-$CMD --benchmark_warmup_steps ${WARMUP_STEPS} --max_steps ${MAX_STEPS} | tee $TMP_DIR/run.log
-sed -n '/^Epoch:\[0/p' $TMP_DIR/run.log > ${OUT_DIR}/run_res.csv
+#$CMD --benchmark_warmup_steps ${WARMUP_STEPS} --max_steps ${MAX_STEPS} | tee $TMP_DIR/run.log
+#sed -n '/^Epoch:\[0/p' $TMP_DIR/run.log > ${OUT_DIR}/run_res.csv
 
 # record kernels
 export ROCBLAS_LAYER=6
@@ -56,7 +56,7 @@ if [ ! -e rocblas-bench ]; then
 	ln -s ${TOOL} .
 fi
 unset ROCBLAS_LAYER
-sed "s/$/ -i ${STEPS} -j ${WARMUP_STEPS}/g" $ROCBLAS_LOG_BENCH_PATH > ${TMP_DIR}/rb.csv
+sed "s/$/ -i ${MAX_STEPS} -j ${WARMUP_STEPS}/g" $ROCBLAS_LOG_BENCH_PATH > ${TMP_DIR}/rb.csv
 sh ${TMP_DIR}/rb.csv 2>&1 > $TMP_DIR/rb_res.txt | tee $TMP_DIR/rocblas_bench.log
 sed -E -n '/(^N,|^T,)/p' $TMP_DIR/rb_res.txt > $OUT_DIR/rocblas_bench_res.csv
 echo "File $OUT_DIR/rocblas_bench_res.csv is generated."
