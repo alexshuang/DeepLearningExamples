@@ -1,5 +1,15 @@
 #!/bin/sh
 
+# arg 1: gpu device id
+# arg 2: output dir
+function get_hw_info() {
+    output=$2/hw.csv
+    clks=(`/opt/rocm/bin/rocm-smi -d $1 --showclkfrq | grep '*' | grep 'GPU' | awk '{print $4}'`)
+    dev=`/opt/rocm/bin/rocm-smi -d $1 -i | grep 'GPU' | awk '{print $5}'`
+    echo "device,sclk,mclk" > $output
+    echo "$dev,${clks[2]},${clks[1]}" >> $output
+}
+
 OUT_DIR=${1:-out}
 TMP_DIR=$OUT_DIR/tmp
 
@@ -8,6 +18,7 @@ mkdir -p $OUT_DIR $TMP_DIR
 
 MAX_STEPS=${2:-1000}
 WARMUP_STEPS=${3:-30}
+DEVICE=${4:-1}
 
 dataset_dir=/data/small_terabyte_dataset
 
@@ -29,9 +40,13 @@ CMD="python3.6 -m dlrm.scripts.main \
 
 set -e
 
+HIP_VISIBLE_DEVICE=$DEVICE
+
+get_hw_info $DEVICE $OUT_DIR
+
 # end2end perf
-#$CMD --benchmark_warmup_steps ${WARMUP_STEPS} --max_steps ${MAX_STEPS} | tee $TMP_DIR/run.log
-#sed -n '/^Epoch:\[0/p' $TMP_DIR/run.log > ${OUT_DIR}/run_res.csv
+$CMD --benchmark_warmup_steps ${WARMUP_STEPS} --max_steps ${MAX_STEPS} | tee $TMP_DIR/run.log
+sed -n '/^Epoch:\[0/p' $TMP_DIR/run.log > ${OUT_DIR}/run_res.csv
 
 # record kernels
 export ROCBLAS_LAYER=6
@@ -41,7 +56,7 @@ rm -f ${ROCBLAS_LOG_BENCH_PATH}
 rm -f ${ROCBLAS_LOG_PROFILE_PATH}
 echo "pmc: FetchSize L2CacheHit" > input.txt
 /opt/rocm/bin/rocprof -i input.txt --obj-tracking on --timestamp on --stats -o ${TMP_DIR}/kernel_prof.csv \
-$CMD --benchmark_warmup_steps 0 --max_steps 1
+$CMD --benchmark_warmup_steps 0 --max_steps 100
 
 # split one iteration
 NUM_GEMM=23
