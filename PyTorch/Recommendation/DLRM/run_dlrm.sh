@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # arg 1: gpu device id
 # arg 2: output dir
