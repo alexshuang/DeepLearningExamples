@@ -41,6 +41,9 @@ from fairseq.models import build_model
 import sacrebleu
 import dllogger as DLLogger
 from fairseq.log_helper import AggregatorBackend, setup_logger
+import pandas as pd
+
+iter_meter = IterMeter()
 
 def main(args):
 
@@ -164,6 +167,14 @@ def main(args):
         if epoch_itr.epoch % args.save_interval == 0:
             save_checkpoint(args, trainer, epoch_itr, valid_losses[0])
 
+        if args.result_dir:
+            os.makedirs(args.result_dir, exist_ok=True)
+            res = {'Model': ['Transformer'], 'Dtype': ['FP16'] if args.amp or args.fp16 else ['FP32'],
+                    'Iteration': [len(iter_meter.iter_elapsed)], 'TotalDurationNs': [iter_meter.iter_elapsed_total * 1e9],
+                    'AvgIterDurationNs': [iter_meter.iter_elapsed_avg * 1e9]}
+            df = pd.DataFrame(res)
+            df.to_csv(f'{args.result_dir}/model.csv', index=False, float_format='%.0f')
+
     train_meter.stop()
     DLLogger.log(step=[], data=run_summary, verbosity=0)
     DLLogger.log(step='RUN', data={'walltime': train_meter.sum}, verbosity=0)
@@ -202,6 +213,10 @@ def train(args, trainer, datasets, epoch_itr):
         else:
             trainer.train_step(sample, update_params=True, last_step=(i == len(itr)-1))
 
+        iter_meter.iter_stop()
+
+        if i < args.warmup_updates: iter_meter.reset()
+
         # ignore the first mini-batch in words-per-second calculation
         if i == 0:
             trainer.get_throughput_meter().reset()
@@ -222,6 +237,8 @@ def train(args, trainer, datasets, epoch_itr):
 
         if num_updates >= max_update:
             break
+
+        iter_meter.iter_start()
 
     print('Epoch time:', time.time() - begin)
 
