@@ -33,7 +33,7 @@ from copy import deepcopy
 
 from fairseq import data, distributed_utils, options, utils, tokenizer
 from fairseq.ddp_trainer import DDPTrainer
-from fairseq.meters import StopwatchMeter, TimeMeter
+from fairseq.meters import StopwatchMeter, TimeMeter, IterMeter
 from fairseq.sequence_generator import SequenceGenerator
 from fairseq.data import dictionary, data_utils, load_dataset_splits
 from fairseq.models import build_model

@@ -218,6 +218,7 @@ def add_optimization_args(parser):
                             ' (default is to normalize by number of tokens)')
     group.add_argument('--update-freq', default='1', metavar='N',
                        help='update parameters every N_i batches, when in epoch i')
+    group.add_argument('--result-dir', default=None, type=str, help='result dir')
 
     # Optimizer definitions can be found under fairseq/optim/
     group.add_argument('--optimizer', default='nag', metavar='OPT',
