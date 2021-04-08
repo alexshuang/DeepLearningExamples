@@ -29,7 +29,7 @@ vocab_file=${9:-"$SOURCE_DIR/vocab.txt"}
 OUT_DIR=${10:-"$SOURCE_DIR/out"}
 mode=${11:-"train"}
 CONFIG_FILE=${12:-"$SOURCE_DIR/config.json"}
-max_steps=${13:-"100"} 
+max_steps=${13:-"1000"} 
 
 echo "out dir is $OUT_DIR"
 mkdir -p $OUT_DIR
@@ -44,13 +44,16 @@ if [ "$precision" = "fp16" ] ; then
   use_fp16=" --fp16 "
 fi
 
-if [ "$num_gpu" = "1" ] ; then
-  export CUDA_VISIBLE_DEVICES=0
-  mpi_command=""
-else
-  unset CUDA_VISIBLE_DEVICES
-  mpi_command=" -m torch.distributed.launch --nproc_per_node=$num_gpu"
-fi
+#if [ "$num_gpu" = "1" ] ; then
+#  export CUDA_VISIBLE_DEVICES=0
+#  mpi_command=""
+#else
+#  unset CUDA_VISIBLE_DEVICES
+#  mpi_command=" -m torch.distributed.launch --nproc_per_node=$num_gpu"
+#fi
+
+unset CUDA_VISIBLE_DEVICES
+mpi_command=" -m torch.distributed.launch --nproc_per_node=$num_gpu"
 
 CMD="python  $mpi_command run_squad.py "
 CMD+="--init_checkpoint=$init_checkpoint "
@@ -84,7 +87,7 @@ CMD+=" --bert_model=bert-large-uncased "
 CMD+=" --learning_rate=$learning_rate "
 CMD+=" --seed=$seed "
 CMD+=" --num_train_epochs=$epochs "
-CMD+=" --max_seq_length=384 "
+CMD+=" --max_seq_length=512 "
 CMD+=" --doc_stride=128 "
 CMD+=" --output_dir=$OUT_DIR "
 CMD+=" --vocab_file=$vocab_file "
@@ -94,4 +97,9 @@ CMD+=" $use_fp16"
 
 LOGFILE=$OUT_DIR/logfile.txt
 echo "$CMD |& tee $LOGFILE"
-time $CMD |& tee $LOGFILE
+#time $CMD |& tee $LOGFILE
+
+echo $CMD
+time $CMD --max_steps=$max_steps --result_dir "out" |& tee $LOGFILE
+
+#$CMD --model_summary

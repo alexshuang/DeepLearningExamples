@@ -43,6 +43,9 @@ from tokenization import (BasicTokenizer, BertTokenizer, whitespace_tokenize)
 from utils import is_main_process, format_step
 import dllogger, time
 
+from meter_utils import *
+import pandas as pd
+
 torch._C._jit_set_profiling_mode(False)
 torch._C._jit_set_profiling_executor(False)
 
@@ -56,6 +59,7 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message
                     level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+meter = StopwatchMeter()
 
 class SquadExample(object):
     """
@@ -849,6 +853,13 @@ def main():
                         default=None,
                         type=str,
                         help="Location to cache train feaures. Will default to the dataset directory")
+    parser.add_argument('--model_summary',
+                        action='store_true',
+                        help="model summary")
+    parser.add_argument('--warmup_steps',
+                        type=int, default=10,
+                        help="Cold iteration")
+    parser.add_argument("--result_dir", type=str, default="", help="output dir for profile results")
 
     args = parser.parse_args()
     args.fp16 = args.fp16 or args.amp    
@@ -980,6 +991,7 @@ def main():
             raise ImportError(
                 "Please install apex from https://www.github.com/nvidia/apex to use distributed and fp16 training.")
 
+        #import pdb; pdb.set_trace()
         model = DDP(model)
     elif n_gpu > 1:
         model = torch.nn.DataParallel(model)
@@ -1039,15 +1051,25 @@ def main():
         for epoch in range(int(args.num_train_epochs)):
             train_iter = tqdm(train_dataloader, desc="Iteration", disable=args.disable_progress_bar) if is_main_process() else train_dataloader
             for step, batch in enumerate(train_iter):
+                meter.dataloader_stop()
                 # Terminate early for benchmarking
                 
+                if args.warmup_steps > 0 and global_step <= args.warmup_steps - 1: meter.reset()
                 if args.max_steps > 0 and global_step > args.max_steps:
                     break
 
                 if n_gpu == 1:
                     batch = tuple(t.to(device) for t in batch)  # multi-gpu does scattering it-self
                 input_ids, input_mask, segment_ids, start_positions, end_positions = batch
+                if args.model_summary:
+                    m_str = str(model)
+                    with open('model_summary.txt', 'w') as fp:
+                        fp.writelines(m_str)
+                        fp.writelines(f'\ninput_shape: {input_ids.shape}\n')
+                        break
+                meter.forward_start()
                 start_logits, end_logits = model(input_ids, segment_ids, input_mask)
+                meter.forward_stop()
                 # If we are on multi-GPU, split add a dimension
                 if len(start_positions.size()) > 1:
                     start_positions = start_positions.squeeze(-1)
@@ -1066,27 +1088,36 @@ def main():
                     loss = loss.mean()  # mean() to average on multi-gpu.
                 if args.gradient_accumulation_steps > 1:
                     loss = loss / args.gradient_accumulation_steps
+                meter.backward_start()
                 if args.fp16:
                     with amp.scale_loss(loss, optimizer) as scaled_loss:
                         scaled_loss.backward()
                 else:
                     loss.backward()
+                meter.backward_stop()
                 
                 # gradient clipping  
                 gradClipper.step(amp.master_params(optimizer))         
  
                 if (step + 1) % args.gradient_accumulation_steps == 0:
+                    meter.optim_start()
                     if args.fp16 :
                         # modify learning rate with special warm up for BERT which FusedAdam doesn't do
                         scheduler.step()
                     optimizer.step()
                     optimizer.zero_grad()
+                    meter.optim_stop()
                     global_step += 1
+
+                meter.iter_stop()
 
                 final_loss = loss.item()
                 if step % args.log_freq == 0:
                     dllogger.log(step=(epoch, global_step,), data={"step_loss": final_loss,
                                                                    "learning_rate": optimizer.param_groups[0]['lr']})
+
+                meter.iter_start()
+                meter.dataloader_start()
 
         time_to_train = time.time() - train_start
 
@@ -1194,6 +1225,19 @@ def main():
                                                  "inference_sequences_per_second": len(eval_features) / time_to_infer})
     if args.do_eval and is_main_process():
         dllogger.log(step=tuple(), data={"exact_match": exact_match, "F1": f1})
+
+    if args.result_dir:
+        os.makedirs(args.result_dir, exist_ok=True)
+        res = {'Model': ['BERT'], 'Dtype': ['FP16'] if args.fp16 else ['FP32'],
+                    'Iteration': [len(meter.iter_elapsed)], 'TotalDurationUs': [meter.iter_elapsed_total * 1e6],
+                    'AvgIterDurationUs': [meter.iter_elapsed_avg * 1e6], 'AvgFwdDurationUs': [meter.fwd_elapsed_avg * 1e6],
+                    'AvgBwdDurationUs': [meter.bwd_elapsed_avg * 1e6], 'AvgOptimDurationUs': [meter.optim_elapsed_avg * 1e6],
+					'AvgDLoaderDurationUs': [meter.dataloader_elapsed_avg * 1e6],
+                                        "E2ETrainTime": time_to_train,
+                                        "training_sequences_per_second": len(train_features) * args.num_train_epochs / time_to_train}
+        df = pd.DataFrame(res)
+        #df = pd.DataFrame(res, dtype=[np.str, np.str, np.int32, np.int32, np.int32, np.int64, np.int64, np.int64, np.int64, np.int64])
+        df.to_csv(f'{args.result_dir}/model.csv', float_format='%.2f', index=False)
 
 if __name__ == "__main__":
     main()
